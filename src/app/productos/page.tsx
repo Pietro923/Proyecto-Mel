@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { PackageSearch, Edit2, Trash2, Plus, Save, Box } from "lucide-react";
+import { getAuth } from "firebase/auth";
 
 // Definir la interfaz Producto
 interface Producto {
@@ -22,6 +23,7 @@ interface Producto {
 
 export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [rolUsuario, setRolUsuario] = useState<string>("vendedor"); // Simular rol del usuario
   const [nombreProducto, setNombreProducto] = useState("");
   const [descripcionProducto, setDescripcionProducto] = useState("");
   const [idProducto, setIdProducto] = useState(0); // Estado para manejar el ID manual
@@ -46,6 +48,30 @@ export default function ProductosPage() {
 
     obtenerProductos();
   }, []);
+  
+  const obtenerRolUsuario = async () => {
+    const auth = getAuth();
+    const user = auth.currentUser; // Obtienes el usuario autenticado
+    
+    if (user) {
+      const usuarioRef = doc(db, "users", user.uid); // Usa el UID del usuario para la referencia
+      const usuarioSnap = await getDoc(usuarioRef);
+  
+      if (usuarioSnap.exists()) {
+        setRolUsuario(usuarioSnap.data().role); // Asumiendo que tienes un campo "role" en la colección de usuarios
+      } else {
+        console.error("Usuario no encontrado");
+      }
+    } else {
+      console.error("No hay usuario autenticado");
+    }
+  };
+  
+  useEffect(() => {
+    obtenerRolUsuario(); // Llamada para obtener el rol al cargar el componente
+  }, []);
+
+  
 
   // Función para obtener y actualizar el LastId en la colección counters
   const obtenerNuevoId = async () => {
@@ -205,7 +231,8 @@ const guardarCambios = async (e: React.FormEvent) => {
       </div>
   
       <div className="grid md:grid-cols-2 gap-8">
-        {/* Formulario de Producto */}
+         {/* Formulario de Producto (visible solo si el usuario NO es "vendedor") */}
+         {rolUsuario !== "vendedor" && (
         <Card className="shadow-lg border-primary/10 hover:shadow-xl transition-shadow duration-300">
           <CardHeader className="bg-primary-50/50 border-b border-primary/10">
             <div className="flex items-center space-x-3">
@@ -316,6 +343,7 @@ const guardarCambios = async (e: React.FormEvent) => {
             </form>
           </CardContent>
         </Card>
+         )}
   
         {/* Búsqueda de Producto */}
         <Card className="shadow-lg border-primary/10 hover:shadow-xl transition-shadow duration-300">
