@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebaseConfig"; // Importa la configuración de Firebase
-import { collection, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, increment } from "firebase/firestore";
+import { db } from "@/lib/firebaseConfig";
+import { collection, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, increment, query, where } from "firebase/firestore";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { PackageSearch, Edit2, Trash2, Plus, Save, Box } from "lucide-react";
 import { getAuth } from "firebase/auth";
@@ -19,21 +20,43 @@ interface Producto {
   precio: number;
   cantidad: number; // Nuevo campo cantidad
   imagenUrl: string;
+  categoria: string; // Nuevo campo categoría
 }
 
 export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [rolUsuario, setRolUsuario] = useState<string>("vendedor"); // Simular rol del usuario
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [rolUsuario, setRolUsuario] = useState<string>("vendedor");
   const [nombreProducto, setNombreProducto] = useState("");
   const [descripcionProducto, setDescripcionProducto] = useState("");
-  const [idProducto, setIdProducto] = useState(0); // Estado para manejar el ID manual
+  const [idProducto, setIdProducto] = useState(0);
   const [precioProducto, setPrecioProducto] = useState(0);
-  const [cantidadProducto, setCantidadProducto] = useState(1); // Estado para cantidad
+  const [cantidadProducto, setCantidadProducto] = useState(1);
   const [imagenUrlProducto, setImagenUrlProducto] = useState("");
   const [productoEditado, setProductoEditado] = useState<Producto | null>(null);
-  const [showAlert, setShowAlert] = useState(false); // Estado para controlar el AlertDialog
+  const [showAlert, setShowAlert] = useState(false);
   const [busquedaId, setBusquedaId] = useState<number | string>("");
+  const [categoriaProducto, setCategoriaProducto] = useState(""); // Estado para categoría
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<string>('')
   const [productoBuscado, setProductoBuscado] = useState<Producto | null>(null);
+
+  // Obtener categorías
+  useEffect(() => {
+    const obtenerCategorias = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "categorias"));
+        const categoriasObtenidas: string[] = [];
+        querySnapshot.forEach((doc) => {
+          categoriasObtenidas.push(doc.id);
+        });
+        setCategorias(['Todas', ...categoriasObtenidas]);
+      } catch (error) {
+        console.error("Error al obtener categorías: ", error);
+      }
+    };
+
+    obtenerCategorias();
+  }, []);
 
   // Obtener la colección de productos desde la base de datos
   useEffect(() => {
@@ -106,7 +129,8 @@ const agregarProducto = async (e: React.FormEvent) => {
       precio: precioProducto,
       cantidad: cantidadProducto,
       imagenUrl: imagenUrlProducto,
-    };
+      categoria: categoriaProducto, // Agregar categoría
+      };
 
     // Verificar si el documento ya existe
     const docRef = doc(db, "Productos", idProducto.toString());
@@ -142,6 +166,7 @@ const agregarProducto = async (e: React.FormEvent) => {
   setPrecioProducto(producto.precio);
   setCantidadProducto(producto.cantidad); // Cargar la cantidad
   setImagenUrlProducto(producto.imagenUrl);
+  setCategoriaProducto(producto.categoria); // Cargar la categoría
 };
 
 const guardarCambios = async (e: React.FormEvent) => {
@@ -155,6 +180,7 @@ const guardarCambios = async (e: React.FormEvent) => {
       precio: precioProducto,
       cantidad: cantidadProducto,
       imagenUrl: imagenUrlProducto,
+      categoria: categoriaProducto, // Actualizar categoría
     };
 
     try {
@@ -174,6 +200,7 @@ const guardarCambios = async (e: React.FormEvent) => {
       setPrecioProducto(0);
       setCantidadProducto(1);
       setImagenUrlProducto("");
+      setCategoriaProducto(""); // Resetear categoría
     } catch (error) {
       console.error("Error al actualizar producto: ", error);
     }
@@ -209,7 +236,8 @@ const guardarCambios = async (e: React.FormEvent) => {
           descripcion: docSnap.data().descripcion,
           precio: docSnap.data().precio,
           cantidad: docSnap.data().cantidad,
-          imagenUrl: docSnap.data().imagenUrl
+          imagenUrl: docSnap.data().imagenUrl,
+          categoria: docSnap.data().categoria, // Nuevo campo categoría:
         };
         setProductoBuscado(producto);
       } else {
@@ -218,6 +246,33 @@ const guardarCambios = async (e: React.FormEvent) => {
       }
     } catch (error) {
       console.error("Error al buscar producto: ", error);
+    }
+  };
+
+  // Función para buscar productos por categoría
+  const buscarProductosPorCategoria = async () => {
+    try {
+      let q;
+      if (categoriaSeleccionada === 'Todas' || categoriaSeleccionada === '') {
+        q = query(collection(db, "Productos"));
+      } else {
+        q = query(collection(db, "Productos"), where("categoria", "==", categoriaSeleccionada));
+      }
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const productosEncontrados: Producto[] = [];
+        querySnapshot.forEach((doc) => {
+          productosEncontrados.push({ id: Number(doc.id), ...doc.data() } as Producto);
+        });
+        setProductos(productosEncontrados);
+      } else {
+        setProductos([]);
+        alert("No se encontraron productos");
+      }
+    } catch (error) {
+      console.error("Error al buscar productos: ", error);
     }
   };
 
@@ -312,6 +367,25 @@ const guardarCambios = async (e: React.FormEvent) => {
                     placeholder="Cantidad en stock"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="categoriaProducto" className="text-gray-700">Categoría</Label>
+                  <Select 
+                    value={categoriaProducto} 
+                    onValueChange={(value) => setCategoriaProducto(value)}
+                    required
+                  >
+                    <SelectTrigger className="w-full focus:border-primary focus:ring-primary/50">
+                      <SelectValue placeholder="Selecciona una categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categorias.map((categoria) => (
+                        <SelectItem key={categoria} value={categoria}>
+                          {categoria}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="imagenUrlProducto" className="text-gray-700">URL de Imagen</Label>
                   <Input
@@ -355,7 +429,7 @@ const guardarCambios = async (e: React.FormEvent) => {
               </CardTitle>
             </div>
             <CardDescription>
-              Encuentra productos rápidamente por su ID
+              Encuentra productos rápidamente por su ID o categoria
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6 space-y-4">
@@ -427,6 +501,30 @@ const guardarCambios = async (e: React.FormEvent) => {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
+        <div className="flex space-x-3 items-center mb-6">
+          <p>	Categoria</p>
+          <Select onValueChange={setCategoriaSeleccionada}>
+            <SelectTrigger className="w-[280px]">
+              <SelectValue placeholder="Selecciona una categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              {categorias.map((categoria) => (
+                <SelectItem key={categoria} value={categoria}>
+                  {categoria}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <Button 
+            onClick={buscarProductosPorCategoria} 
+            variant="outline" 
+            className="border-primary text-primary hover:bg-primary/10"
+          >
+            <PackageSearch className="mr-2 h-5 w-5" />
+            Buscar
+          </Button>
+        </div>
           {productos.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
               <p className="text-gray-500 text-lg">
@@ -445,6 +543,7 @@ const guardarCambios = async (e: React.FormEvent) => {
                       <div className="space-y-1">
                         <h3 className="text-lg font-semibold text-gray-900">{producto.nombre}</h3>
                         <p className="text-gray-600 text-sm">{producto.descripcion}</p>
+                        <p className="text-gray-500 text-xs">Categoria: {producto.categoria}</p>
                         <p className="text-gray-500 text-xs">ID: {producto.id}</p>
                       </div>
                       <div className="flex gap-3">
